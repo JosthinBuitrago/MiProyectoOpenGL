@@ -26,15 +26,22 @@ int main() {
     //tiene como funcion leer los dos textos, el de los vertices y el color
 
     // --- PREPARANDO EL MATERIAL --------------------------------------------------------------------------------------
-    float vertices[] = { //creamos un arreglo con los 3 vertices que formaran la figura
-        -0.5f, -0.5f, 0.0f,
-         0.5f, -0.5f, 0.0f,
-         0.0f,  0.5f, 0.0f
+    float vertices[] = { //creamos un arreglo con los 4 vertices que formaran la figura
+          0.5f,  0.5f, 0.0f,
+          0.5f, -0.5f, 0.0f,
+         -0.5f, -0.5f, 0.0f,
+         -0.5f,  0.5f, 0.0f
     };//el Z es cero porque estamos en 2D
 
-    unsigned int VBO, VAO; //creamos nuestras herramientas de memoria
+    unsigned int indices[] = {
+        0, 1, 3,   // Primer triángulo
+        1, 2, 3    // Segundo triángulo
+    };
+
+    unsigned int VBO, VAO, EBO; //creamos nuestras herramientas de memoria
     glGenVertexArrays(1, &VAO); //crea el manual de instrucciones en la variable VAO
     glGenBuffers(1, &VBO);//crea la caja del almacenamiento en la variable VBO
+    glGenBuffers(1, &EBO); // Generamos la caja para el EBO
 
     glBindVertexArray(VAO);//le decimos que todo lo que hagamos que lo anote en esa variable sin importar que
 
@@ -44,6 +51,10 @@ int main() {
     //sizeof(vertices): el tamaño de nuestra lista de coordenadas
     //vertices: los datos que vamos a meter
     //GL_STATIC_DRAW: le decimos que en la jugada, que esos datos son estaticos y que sea rapido
+
+    // Conectamos y llenamos el EBO (DEBE hacerse mientras el VAO está activado)
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);//toma nuestra lista de indices la RAM y la mete en la caja de EBO
 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);//interpretacion de todo a la GPU
     //0: datos dirigidos a la locacion 0
@@ -64,10 +75,11 @@ int main() {
         shaderProgram.usar();//ejecuta el metodo usar de nuestra clase, que le ordena a nuestra GPU activar nuestro programa compilado de shaders
         glBindVertexArray(VAO);//Se activa el Vertex Array Object
         //carpeta donde estan las coordenadas exactas y la configuracion de los puntos
-        glDrawArrays(GL_TRIANGLES, 0, 3);//orden de dibujar
-        //GL_TRIANGLES: dibuje triangulos
-        //0: que empiece desde el punto 0
-        //3: y que son 3 puntos que debe procesar
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);//orden de dibujar
+        //GL_TRIANGLES: dibuja triangulos
+        //6: procesando 6 indices en total
+        //GL_UNSIGNED_INT: que son enteros sin signo
+        //0: y empieza desde el indice 0
 
         glfwSwapBuffers(window);//evita parpadeos
         glfwPollEvents();//escucha y procesa eventos del sistema
