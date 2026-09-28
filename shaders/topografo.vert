@@ -1,10 +1,11 @@
-#version 330 core //version 3.3 moderno por el core
-layout (location = 0) in vec3 aPos; //en la ubiacion 0 diremos que:
-//in: la variable es una entrada (c++ a la GPU)
-//vec3: vector de tres componentes (X, Y, Z)
-//aPos: nombre que le dimos a la variable
-void main() //funcion principal de la GPU (la hara una vez por cada vertice)
+#version 330 core
+layout (location = 0) in vec3 aPos;   // Recibe la coordenada (X, Y, Z)
+layout (location = 1) in vec3 aColor; // NUEVO: Recibe el color (R, G, B) del struct
+
+out vec3 colorParaPintor; // Tubo que envía el color al Fragment Shader
+
+void main()
 {
-gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0); //variable de openGL
-//se le da el vector mas el 1.0 para que openGl calcule perspectiva 3D
+    gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);
+    colorParaPintor = aColor; // Pasa el color intacto al pintor
 }

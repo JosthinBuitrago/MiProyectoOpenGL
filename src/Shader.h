@@ -1,6 +1,5 @@
 #ifndef SHADER_H //escudos protectores
 #define SHADER_H //evitan que sea lea este archivo mas de una vez y todo colapse
-
 #include <glad/glad.h> //activa las herramientas graficas
 #include <string> //permite usar texto moderno
 #include <fstream> //abre la conexion fisica con el disco duro

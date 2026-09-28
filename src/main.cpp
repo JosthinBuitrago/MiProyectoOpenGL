@@ -1,90 +1,67 @@
-#include <glad/glad.h> //directorio de funciones graficas
-#include <GLFW/glfw3.h> //encargada de comunicacion con el sistema operativo
-#include <iostream> //herramienta nativa de c++
-#include <fstream> // craga de herramientas para abriri y leer archivos fisicos
-#include <sstream> //carga herramienats para crear streams en la memoria RAM
-#include <string> //permite utilizar tipos de datos mas libres
-#include "Shader.h" //Importa nuestra propia clase personalizada
+#include <glad/glad.h> // Cargador de funciones de la GPU (SIEMPRE VA PRIMERO EN MAC).
+#include <GLFW/glfw3.h> // Librería para crear la ventana y leer el teclado.
+#include <iostream> // Para imprimir errores en la consola.
+
+#include "Shader.h" // El programa que pinta los colores en la tarjeta gráfica.
+#include "Grilla.h" // Mi lienzo de cuadritos.
+#include "Bresenham.h" // Mi matemática que traza líneas y círculos.
 
 int main() {
+    // Configuro el tamaño de mi mundo virtual (cuántos "píxeles gigantes" quiero).
+    int columnas = 40;
+    int filas = 30;
+    // Defino las coordenadas de prueba para mi línea
+    int linea_x0 = 1, linea_y0 = 1;
+    int linea_x1 = 20, linea_y1 = 30;
+    // Defino las coordenadas de prueba para mi círculo
+    int circulo_centroX = 20, circulo_centroY = 15;
+    int circulo_radio = 10;
 
-    //Inicializacion de libreria de creacion de ventana
-    if (!glfwInit()) return -1; //chequeo: por si no esta creado
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3); //reglas antes de construccion de la ventana
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3); //version 3.3 de oprnGL
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); //perfil moderno CORE
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); //para que la mac coora el codigo, sono esta esto: paila
+    // --- CONFIGURACIÓN DE LA VENTANA (GLFW) ---
+    if (!glfwInit()) return -1; // Arranco la librería de la ventana. Si falla, cierro el programa.
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);   //VERSION DEL OPEN GL
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // Configuración obligatoria y vital para macOS.
+    // Creo la ventana de 800x600 píxeles reales y le pongo un título.
+    GLFWwindow* window = glfwCreateWindow(800, 600, "Bresenham - Proyecto Final Segundo Corte", NULL, NULL);
+    if (!window) { glfwTerminate(); return -1; } // Si hubo un error creando la ventana, me salgo.
+    glfwMakeContextCurrent(window); // Le digo a OpenGL: "Dibuja en esta ventana que acabo de crear".
+    // Inicializo GLAD (conecta mi código con los drivers de video de la Mac).
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) return -1;
+    // Cargo mis Shaders (los pequeños programas que se ejecutan directo en el procesador gráfico).
+    Shader shaderProgram("../shaders/topografo.vert", "../shaders/pintor.frag");
+    // Creo mi lienzo gigante (instancio mi clase Grilla).
+    Grilla grilla(columnas, filas);
 
-    GLFWwindow* window = glfwCreateWindow(800, 600, "Mi Primer Triangulo OpenGL", NULL, NULL); //Construccion de la ventana en la variable window
-    //Los parentesis exigen 5 datos exactos (ancho, alto, Titulo, monitor, compartir)
-    if (!window) { glfwTerminate(); return -1; }//chequeo: por si no se abre termina el preceso y cierra el programa
-    glfwMakeContextCurrent(window);//todo lo que se va a hacer en la ventana se hara en la ventana llamada window, no en otra
-
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) return -1;//chequeo: asegurandose de que el sistema le de las direcciones de la tarjeta de video para trabajar
-
-    Shader shaderProgram("../shaders/topografo.vert", "../shaders/pintor.frag");//creamos un objeto con caracteristics de nuestra clase personalizada
-    //tiene como funcion leer los dos textos, el de los vertices y el color
-
-    // --- PREPARANDO EL MATERIAL --------------------------------------------------------------------------------------
-    float vertices[] = { //creamos un arreglo con los 4 vertices que formaran la figura
-          0.5f,  0.5f, 0.0f,
-          0.5f, -0.5f, 0.0f,
-         -0.5f, -0.5f, 0.0f,
-         -0.5f,  0.5f, 0.0f
-    };//el Z es cero porque estamos en 2D
-
-    unsigned int indices[] = {
-        0, 1, 3,   // Primer triángulo
-        1, 2, 3    // Segundo triángulo
-    };
-
-    unsigned int VBO, VAO, EBO; //creamos nuestras herramientas de memoria
-    glGenVertexArrays(1, &VAO); //crea el manual de instrucciones en la variable VAO
-    glGenBuffers(1, &VBO);//crea la caja del almacenamiento en la variable VBO
-    glGenBuffers(1, &EBO); // Generamos la caja para el EBO
-
-    glBindVertexArray(VAO);//le decimos que todo lo que hagamos que lo anote en esa variable sin importar que
-
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);//le decimos a openGl que VBO es una caja para guaradr solo vertices
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);//aqui es donde meteos los datos fisicamente
-    //GL_ARRAY_BUFFER: tipo de caja
-    //sizeof(vertices): el tamaño de nuestra lista de coordenadas
-    //vertices: los datos que vamos a meter
-    //GL_STATIC_DRAW: le decimos que en la jugada, que esos datos son estaticos y que sea rapido
-
-    // Conectamos y llenamos el EBO (DEBE hacerse mientras el VAO está activado)
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);//toma nuestra lista de indices la RAM y la mete en la caja de EBO
-
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);//interpretacion de todo a la GPU
-    //0: datos dirigidos a la locacion 0
-    //3: cuantos numeros forman un solo vertice(X,Y,Z)
-    //GL_FLOAT: decimales los numeros
-    //GL_FALSE: que no fuerce un rango en los numeros
-    //3 * sizeof(float):STRIDE. A cada cuanto esta el siguiente punto (tres porque son tres coordenadas(X, Y, Z))
-    //(void*)0:OffSet. Desde donde empezar a leer en la caja, osea 0
-
-    glEnableVertexAttribArray(0);//prendemos la locacion donde estaban los datos, en el punto 0
-    //-----------------------------------------------------------------------------------------------------------------------
-
-    // --- BUCLE PRINCIPAL (El dibujo en vivo) ---------------------------------------------------------------------------
-    while (!glfwWindowShouldClose(window)) {//mientras el usuario no haya cerrado la ventana se repite lo de adentro
-        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);//el fondo es verde oscuro
-        glClear(GL_COLOR_BUFFER_BIT);//borra todo lo que se tenia antes y la prepara para dibujar de nuevo
-
-        shaderProgram.usar();//ejecuta el metodo usar de nuestra clase, que le ordena a nuestra GPU activar nuestro programa compilado de shaders
-        glBindVertexArray(VAO);//Se activa el Vertex Array Object
-        //carpeta donde estan las coordenadas exactas y la configuracion de los puntos
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);//orden de dibujar
-        //GL_TRIANGLES: dibuja triangulos
-        //6: procesando 6 indices en total
-        //GL_UNSIGNED_INT: que son enteros sin signo
-        //0: y empieza desde el indice 0
-
-        glfwSwapBuffers(window);//evita parpadeos
-        glfwPollEvents();//escucha y procesa eventos del sistema
+    // --- BUCLE PRINCIPAL (GAMELOOP) ---
+    // Este ciclo da vueltas infinitas a 60 cuadros por segundo hasta que el usuario cierre la ventana.
+    while (!glfwWindowShouldClose(window)) {
+        // INTERACCIÓN: Si el usuario presiona la tecla 'L', dibujo la Línea.
+        if (glfwGetKey(window, GLFW_KEY_L) == GLFW_PRESS) {
+            grilla.limpiar(); // Primero borro lo que haya en pantalla.
+            Bresenham::linea(linea_x0, linea_y0, linea_x1, linea_y1, grilla); // Calculo la línea matemática.
+            grilla.actualizarVRAM(); // Mando los nuevos colores a la tarjeta gráfica.
+        }
+        // INTERACCIÓN: Si el usuario presiona la tecla 'C', dibujo el Círculo.
+        if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS) {
+            grilla.limpiar(); // Borro la pantalla.
+            Bresenham::circulo(circulo_centroX, circulo_centroY, circulo_radio, grilla); // Calculo el círculo.
+            grilla.actualizarVRAM(); // Mando los nuevos colores a la tarjeta gráfica.
+        }
+        // LIMPIEZA VISUAL: Limpio el color de fondo de la ventana real antes de pintar encima.
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        // LE DIGO A LA GPU: "Usa mi programa de colores (Shader) y dibuja mi grilla completa".
+        shaderProgram.usar();
+        grilla.dibujar();
+        // OpenGL usa una técnica de "doble buffer". Mientras yo veo una pantalla, él pinta en una pantalla oculta.
+        // SwapBuffers intercambia esas dos pantallas para que yo vea el dibujo nuevo sin parpadeos.
+        glfwSwapBuffers(window);
+        // Reviso si el mouse se movió, si se presionó otra tecla o si le dieron click a la 'X' de cerrar ventana.
+        glfwPollEvents();
     }
-
-    glfwTerminate();//una vez cierrada la ventana se finaliza todo los recursos listos para utilizar
+    // Cuando el usuario cierra la ventana, apago todo de forma segura para no trabar la Mac.
+    glfwTerminate();
+    // Termino el programa con éxito.
     return 0;
 }
