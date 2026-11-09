@@ -14,6 +14,23 @@
 #include "imgui_impl_glfw.h"    // Conecta ImGui con GLFW (para leer el mouse).
 #include "imgui_impl_opengl3.h" // Conecta ImGui con OpenGL (para dibujar).
 
+// Convierte un color RGB (valores de 0 a 1) a CMYK (valores de 0 a 1).
+// Los "&" hacen que la función pueda devolver cuatro resultados a la vez.
+// Ojo: es la fórmula matemática simple; una impresora real usa perfiles de color más complejos.
+void rgbACmyk(float r, float g, float b, float& c, float& m, float& y, float& k) {
+    float mayor = r;                  // Busco cuál de los tres canales es el mayor.
+    if (g > mayor) mayor = g;
+    if (b > mayor) mayor = b;
+    k = 1.0f - mayor;                 // El negro es lo que le "falta" de luz al color más fuerte.
+    if (k >= 1.0f) {                  // Negro puro: evito dividir por cero.
+        c = 0.0f; m = 0.0f; y = 0.0f;
+    } else {
+        c = (1.0f - r - k) / (1.0f - k);
+        m = (1.0f - g - k) / (1.0f - k);
+        y = (1.0f - b - k) / (1.0f - k);
+    }
+}
+
 int main() {
     const int ANCHO_PANEL = 200; // El panel mide 200 puntos de ancho y va a la izquierda.
     // Configuro el tamaño de mi mundo virtual (cuántos "píxeles gigantes" quiero).
@@ -63,6 +80,10 @@ int main() {
     float pasoGrados = 15.0f;         // Cuántos grados gira cada clic en "Girar".
     bool girarSobreLienzo = false;    // ¿Giro alrededor del centro del lienzo (true) o de la propia figura (false)?
 
+    float factorEscala = 1.25f; // Cuánto crece o se encoge la figura en cada clic.
+
+    std::vector<float> trazoX, trazoY; // NUEVO: las celdas por donde va pasando el mouse mientras dibujo con el lápiz.
+
     // --- BUCLE PRINCIPAL (GAMELOOP) ---
     // Este ciclo da vueltas infinitas a 60 cuadros por segundo hasta que el usuario cierre la ventana.
     while (!glfwWindowShouldClose(window)) {
@@ -82,10 +103,18 @@ int main() {
         // RadioButton: botón redondo; devuelve true cuando lo clickean. Solo uno queda marcado.
         if (ImGui::RadioButton("Linea", herramienta == LINEA)) herramienta = LINEA;
         if (ImGui::RadioButton("Circulo", herramienta == CIRCULO)) herramienta = CIRCULO;
+        if (ImGui::RadioButton("Rectangulo", herramienta == RECTANGULO)) herramienta = RECTANGULO;
+        if (ImGui::RadioButton("Lapiz", herramienta == LAPIZ)) herramienta = LAPIZ;
         ImGui::Separator();
         ImGui::Text("Color");
         ImGui::SetNextItemWidth(-1); // La barra de color ocupa todo el ancho del panel.
         ImGui::ColorEdit3("##color", colorActual); // Selector RGB. ImGui cambia colorActual directamente.
+
+        float c, m, y, k; // Aquí recibo el resultado de la conversión.
+        rgbACmyk(colorActual[0], colorActual[1], colorActual[2], c, m, y, k);
+        ImGui::Text("C: %.0f%%  M: %.0f%%", c * 100.0f, m * 100.0f); // %% imprime el símbolo %.
+        ImGui::Text("Y: %.0f%%  K: %.0f%%", y * 100.0f, k * 100.0f);
+
         ImGui::Separator();
 
         // Button devuelve true SOLO en el cuadro en que lo clickean. ImVec2(-1, 0) = ocupa todo el ancho.
@@ -100,7 +129,11 @@ int main() {
         ImGui::BeginChild("lista", ImVec2(-1, 90), true);
         for (int i = 0; i < (int)figuras.size(); ++i) {
             char etiqueta[32];
-            snprintf(etiqueta, sizeof(etiqueta), "%s %d", figuras[i].tipo == LINEA ? "Linea" : "Circulo", i + 1);
+            const char* nombre = "Linea";
+            if (figuras[i].tipo == CIRCULO) nombre = "Circulo";
+            else if (figuras[i].tipo == RECTANGULO) nombre = "Rectangulo";
+            else if (figuras[i].tipo == LAPIZ) nombre = "Lapiz";
+            snprintf(etiqueta, sizeof(etiqueta), "%s %d", nombre, i + 1);
             // Selectable: un renglón clickeable. Devuelve true cuando lo clickean.
             if (ImGui::Selectable(etiqueta, seleccionada == i)) seleccionada = i;
         }
@@ -129,6 +162,15 @@ int main() {
             } else if (sel.tipo == LINEA) {    // El punto medio de la propia línea.
                 pivoteX = (sel.x0 + sel.x1) / 2.0f;
                 pivoteY = (sel.y0 + sel.y1) / 2.0f;
+                } else if (sel.tipo == RECTANGULO || sel.tipo == LAPIZ) { // El centro: el promedio de todos sus puntos.
+                pivoteX = 0.0f;
+                pivoteY = 0.0f;
+                for (int i = 0; i < (int)sel.puntosX.size(); ++i) {
+                    pivoteX += sel.puntosX[i];
+                    pivoteY += sel.puntosY[i];
+                }
+                pivoteX /= (float)sel.puntosX.size();
+                pivoteY /= (float)sel.puntosX.size();
             } else {                           // El centro del círculo (girar sobre sí mismo no se nota).
                 pivoteX = sel.x0;
                 pivoteY = sel.y0;
@@ -137,12 +179,25 @@ int main() {
             ImGui::SameLine();
             if (ImGui::Button("Girar +", ImVec2(86, 0))) sel.rotar(pasoGrados, pivoteX, pivoteY);
 
+            ImGui::Text("Escalar");
+            ImGui::SetNextItemWidth(-1);
+            ImGui::SliderFloat("##escala", &factorEscala, 1.1f, 2.0f, "Factor: x%.2f");
+            // Achicar usa 1 / factor, así "Agrandar" y luego "Achicar" vuelven al tamaño original.
+            if (ImGui::Button("Achicar", ImVec2(86, 0))) sel.escalar(1.0f / factorEscala, pivoteX, pivoteY);
+            ImGui::SameLine();
+            if (ImGui::Button("Agrandar", ImVec2(86, 0))) sel.escalar(factorEscala, pivoteX, pivoteY);
+
             ImGui::Text("Color de esta figura");
             float colorSel[3] = {sel.r, sel.g, sel.b}; // Copio el color actual de la figura...
             ImGui::SetNextItemWidth(-1);
             if (ImGui::ColorEdit3("##colorSel", colorSel)) { // ...ImGui lo edita; si cambió, lo devuelvo a la figura.
                 sel.r = colorSel[0]; sel.g = colorSel[1]; sel.b = colorSel[2];
             }
+
+            float cs, ms, ys, ks;
+            rgbACmyk(sel.r, sel.g, sel.b, cs, ms, ys, ks);
+            ImGui::Text("C: %.0f%%  M: %.0f%%", cs * 100.0f, ms * 100.0f);
+            ImGui::Text("Y: %.0f%%  K: %.0f%%", ys * 100.0f, ks * 100.0f);
 
             if (ImGui::Button("Borrar esta figura", ImVec2(-1, 0))) {
                 figuras.erase(figuras.begin() + seleccionada); // La saco de la lista.
@@ -176,6 +231,18 @@ int main() {
             arrastrando = true;
             inicioX = celdaX;
             inicioY = celdaY;
+            trazoX.clear(); trazoY.clear();   // Empiezo un recorrido nuevo, vacío...
+            trazoX.push_back((float)celdaX);  // ...con la celda donde presioné como primer punto.
+            trazoY.push_back((float)celdaY);
+        }
+
+        // NUEVO: con el lápiz, voy guardando cada celda nueva por la que pasa el mouse.
+        if (arrastrando && herramienta == LAPIZ) {
+            // Solo guardo el punto si cambié de celda (si no, la lista se llenaría de repetidos).
+            if ((float)celdaX != trazoX.back() || (float)celdaY != trazoY.back()) {
+                trazoX.push_back((float)celdaX);
+                trazoY.push_back((float)celdaY);
+            }
         }
 
         // 2) Mientras arrastro, armo la figura "nueva" con el inicio y la celda actual del mouse.
@@ -187,6 +254,15 @@ int main() {
             int dx = celdaX - inicioX;
             int dy = celdaY - inicioY;
             nueva.radio = (int)std::sqrt(dx * dx + dy * dy); // Círculo: el radio es la distancia (Pitágoras) del centro al mouse.
+                if (herramienta == RECTANGULO) {
+                // Las 4 esquinas, en orden alrededor del borde: inicio -> arriba-derecha -> final -> abajo-izquierda.
+                nueva.puntosX = { (float)inicioX, (float)celdaX, (float)celdaX, (float)inicioX };
+                nueva.puntosY = { (float)inicioY, (float)inicioY, (float)celdaY, (float)celdaY };
+            }
+            if (herramienta == LAPIZ) {
+                nueva.puntosX = trazoX; // La figura se queda con una copia del recorrido.
+                nueva.puntosY = trazoY;
+            }
             nueva.r = colorActual[0]; nueva.g = colorActual[1]; nueva.b = colorActual[2];
         }
 
@@ -206,8 +282,18 @@ int main() {
         // Marco con puntos blancos los extremos (o el centro) de la figura seleccionada.
         if (seleccionada >= 0 && seleccionada < (int)figuras.size()) {
             Figura& s = figuras[seleccionada];
-            grilla.paintPixel((int)std::round(s.x0), (int)std::round(s.y0), 1.0f, 1.0f, 1.0f);
-            if (s.tipo == LINEA) grilla.paintPixel((int)std::round(s.x1), (int)std::round(s.y1), 1.0f, 1.0f, 1.0f);
+            if (s.tipo == RECTANGULO) { // El rectángulo marca sus 4 esquinas.
+                for (int i = 0; i < (int)s.puntosX.size(); ++i) {
+                    grilla.paintPixel((int)std::round(s.puntosX[i]), (int)std::round(s.puntosY[i]), 1.0f, 1.0f, 1.0f);
+                }
+            } else if (s.tipo == LAPIZ) { // El lápiz marca solo donde empieza y donde termina.
+                int ultimo = (int)s.puntosX.size() - 1;
+                grilla.paintPixel((int)std::round(s.puntosX[0]), (int)std::round(s.puntosY[0]), 1.0f, 1.0f, 1.0f);
+                grilla.paintPixel((int)std::round(s.puntosX[ultimo]), (int)std::round(s.puntosY[ultimo]), 1.0f, 1.0f, 1.0f);
+            } else {
+                grilla.paintPixel((int)std::round(s.x0), (int)std::round(s.y0), 1.0f, 1.0f, 1.0f);
+                if (s.tipo == LINEA) grilla.paintPixel((int)std::round(s.x1), (int)std::round(s.y1), 1.0f, 1.0f, 1.0f);
+            }
         }
 
         if (arrastrando) nueva.dibujar(grilla); // Vista previa: se dibuja pero todavía NO está en la lista.
