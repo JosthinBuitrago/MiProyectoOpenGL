@@ -11,8 +11,8 @@ int main() {
     int columnas = 40;
     int filas = 30;
     // Defino las coordenadas de prueba para mi línea
-    int linea_x0 = 1, linea_y0 = 1;
-    int linea_x1 = 20, linea_y1 = 30;
+    int linea_x0 = 0, linea_y0 = 0;
+    int linea_x1 = 35, linea_y1 = 20;
     // Defino las coordenadas de prueba para mi círculo
     int circulo_centroX = 20, circulo_centroY = 15;
     int circulo_radio = 10;
@@ -30,6 +30,7 @@ int main() {
     // Inicializo GLAD (conecta mi código con los drivers de video de la Mac).
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) return -1;
     // Cargo mis Shaders (los pequeños programas que se ejecutan directo en el procesador gráfico).
+    {
     Shader shaderProgram("../shaders/topografo.vert", "../shaders/pintor.frag");
     // Creo mi lienzo gigante (instancio mi clase Grilla).
     Grilla grilla(columnas, filas);
@@ -61,6 +62,7 @@ int main() {
         glfwPollEvents();
     }
     // Cuando el usuario cierra la ventana, apago todo de forma segura para no trabar la Mac.
+}
     glfwTerminate();
     // Termino el programa con éxito.
     return 0;

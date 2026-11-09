@@ -7,34 +7,59 @@
 class Bresenham {
 public:
     //FUNCION DE LINEA
-    static void linea(int x0, int y0, int x1, int y1, Grilla& grilla) {
-            //x0, y0 = Punto de inicio 
-            //x1, y1 = Punto de destino
-            //Grilla es el lienzo y el & para modificarlo directamente
-        // el std:abs elimina el signo negativo
-        int dx = std::abs(x1 - x0); //Distancia total a recorrer en x
-        int dy = std::abs(y1 - y0); //Distancia total a recorrer en y
-        // Direccion de la linea
-        int sx = (x0 < x1) ? 1 : -1; //si va de izquierda a derecha +1, si va a la izquierda -1
-        int sy = (y0 < y1) ? 1 : -1; //si va para arriba +1, si va para abajo -1
-        //Acomulador de error para la aproximacion, inicia en dx-dy
-        int err = dx - dy;
+static void linea(int x0, int y0, int x1, int y1, Grilla& grilla, float r = 0.0f, float g = 1.0f, float b = 1.0f) {
+    int dx, sx;
+    int dy, sy;
 
-        while (true) { //avanzamos pixel por pixel hasta el break
-            grilla.paintPixel(x0, y0, 0.0f, 1.0f, 1.0f); //pintamos la coordenada actual
-            if (x0 == x1 && y0 == y1) break; //si x0=x1 y y0=y1 terminamos ahi
+    // // Evalúo el eje X: Si la meta está más a la derecha, resto normal y mi paso es +1.
+    // // Si está a la izquierda, invierto la resta (inicio - meta) para forzar un resultado positivo y mi paso es -1.
+    if (x0 < x1) {
+        dx = x1 - x0;
+        sx = 1;
+    } else {
+        dx = x0 - x1;
+        sx = -1;
+    }
 
-            int e2 = 2 * err; //multiplicamos por 2 para evaluar el siguiente paso
-            if (e2 > -dy) { //si el doble del error es mayor a -dy avanzamos horizontalmente
-                err -= dy; //restamos la distancia en y para reajustar el error
-                x0 += sx; } //damos el paso segun corresponda en el octante
-            if (e2 < dx)  { //si el doble del error es menor a dx avanzamos verticalmente
-                err += dx; //sumamos la distancia en x para reajustar el error
-                y0 += sy; } //damos el paso segun corresponda en el octante
+    // // Evalúo el eje Y: Misma lógica. Si voy hacia un número mayor, resto meta - inicio.
+    // // Si voy hacia un número menor, resto inicio - meta. Así siempre obtengo distancias positivas.
+    if (y0 < y1) {
+        dy = y1 - y0;
+        sy = 1;
+    } else {
+        dy = y0 - y1;
+        sy = -1;
+    }
+    
+    // // Inicializo el "termómetro" del error restando las distancias calculadas manualmente.
+    int err = dx - dy; 
+
+    // // Empieza el ciclo para pintar la línea punto por punto
+    while (true) {
+        // // Enciendo el píxel en la coordenada actual
+        grilla.paintPixel(x0, y0, r, g, b); 
+        
+        // // Si mi coordenada actual ya es igual a la meta, rompo el ciclo
+        if (x0 == x1 && y0 == y1) break; 
+
+        // // Multiplico el error por 2 (truco maestro para evitar decimales)
+        int e2 = 2 * err; 
+        
+        // // Si el error me lo permite, avanzo en el eje X
+        if (e2 > -dy) { 
+            err -= dy; 
+            x0 += sx;  
+        }
+        
+        // // Si el error me lo permite, avanzo en el eje Y
+        if (e2 < dx) { 
+            err += dx; 
+            y0 += sy;  
         }
     }
+}
     //FUNCION DE CIRCULO
-    static void circulo(int centroX, int centroY, int radio, Grilla& grilla) {
+    static void circulo(int centroX, int centroY, int radio, Grilla& grilla, float r = 0.0f, float g = 1.0f, float b = 1.0f) {
         //centro x,y = coordenadas del centro
         //radio = radio
         //Grilla es el lienzo y el & para modificarlo directamente
@@ -45,14 +70,14 @@ public:
 
         while (y >= x) { //Mientras estemos dibujando el primer octante (hasta llegar a los 45 grados donde X alcanza a Y).
             //Magia de la simetría: Con calcular un solo punto (x, y), iluminamos sus reflejos en los 8 octantes del círculo simultáneamente.
-            grilla.paintPixel(centroX + x, centroY + y, 0.0f, 1.0f, 1.0f); //Octante 1
-            grilla.paintPixel(centroX - x, centroY + y, 0.0f, 1.0f, 1.0f); //Octante 2
-            grilla.paintPixel(centroX + x, centroY - y, 0.0f, 1.0f, 1.0f); //Octante 3
-            grilla.paintPixel(centroX - x, centroY - y, 0.0f, 1.0f, 1.0f); //Octante 4
-            grilla.paintPixel(centroX + y, centroY + x, 0.0f, 1.0f, 1.0f); //Octante 5
-            grilla.paintPixel(centroX - y, centroY + x, 0.0f, 1.0f, 1.0f); //Octante 6
-            grilla.paintPixel(centroX + y, centroY - x, 0.0f, 1.0f, 1.0f); //Octante 7
-            grilla.paintPixel(centroX - y, centroY - x, 0.0f, 1.0f, 1.0f); //Octante 8
+            grilla.paintPixel(centroX + x, centroY + y, r, g, b); //Octante 1
+            grilla.paintPixel(centroX - x, centroY + y, r, g, b); //Octante 2
+            grilla.paintPixel(centroX + x, centroY - y, r, g, b); //Octante 3
+            grilla.paintPixel(centroX - x, centroY - y, r, g, b); //Octante 4
+            grilla.paintPixel(centroX + y, centroY + x, r, g, b); //Octante 5
+            grilla.paintPixel(centroX - y, centroY + x, r, g, b); //Octante 6
+            grilla.paintPixel(centroX + y, centroY - x, r, g, b); //Octante 7
+            grilla.paintPixel(centroX - y, centroY - x, r, g, b); //Octante 8
 
             x++; //Siempre avanzamos un paso hacia la derecha en cada ciclo.
             if (d > 0) { //Si el parametro es positivo significa que estamos fuera del circulo (nos movemos en x y y)

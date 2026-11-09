@@ -31,21 +31,41 @@ public:
         const char* cVert = textoVert.c_str();
         const char* cFrag = textoFrag.c_str();//y con c_str lo convertimos en fomrato C que openGL exige
 
+        int exito; // Aquí OpenGL me responde: 1 si todo salió bien, 0 si hubo un error.
+        char infoLog[512]; // Aquí OpenGL escribe el mensaje de error (si lo hay).
+
         // 1. Compilar Topógrafo
         unsigned int vert = glCreateShader(GL_VERTEX_SHADER); //creamos em la GPU
         glShaderSource(vert, 1, &cVert, NULL); //les ponemos el texto que acabamos de traer traducido
         glCompileShader(vert); //traduce el texto al idioma de la tarjeta grafica
-
+        
+        glGetShaderiv(vert, GL_COMPILE_STATUS, &exito); // Le pregunto a OpenGL: ¿compiló bien el Topógrafo?
+        if (!exito) { // Si exito es 0, falló.
+            glGetShaderInfoLog(vert, 512, NULL, infoLog); // Le pido el mensaje de error.
+            std::cout << "ERROR::SHADER::TOPOGRAFO::COMPILACION\n" << infoLog << std::endl;
+        }
         // 2. Compilar Pintor
         unsigned int frag = glCreateShader(GL_FRAGMENT_SHADER);
         glShaderSource(frag, 1, &cFrag, NULL);
         glCompileShader(frag);
+
+        glGetShaderiv(frag, GL_COMPILE_STATUS, &exito); // ¿Compiló bien el Pintor?
+        if (!exito) {
+            glGetShaderInfoLog(frag, 512, NULL, infoLog);
+            std::cout << "ERROR::SHADER::PINTOR::COMPILACION\n" << infoLog << std::endl;
+        }
 
         // 3. Enlazar ambos en el programa final
         ID = glCreateProgram(); //crea la caja principal
         glAttachShader(ID, vert);
         glAttachShader(ID, frag);//donde conectamos a los dos
         glLinkProgram(ID);//y los fusionamos
+
+        glGetProgramiv(ID, GL_LINK_STATUS, &exito); // ¿Se fusionaron bien los dos shaders?
+        if (!exito) {
+            glGetProgramInfoLog(ID, 512, NULL, infoLog);
+            std::cout << "ERROR::SHADER::PROGRAMA::ENLACE\n" << infoLog << std::endl;
+        }
 
         glDeleteShader(vert);//borramos los sahders antiguos para no gastar memoria
         glDeleteShader(frag);
