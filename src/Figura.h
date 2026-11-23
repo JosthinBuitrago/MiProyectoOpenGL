@@ -3,11 +3,12 @@
 
 #include <cmath>        // round (redondear), sin y cos (para rotar).
 #include <vector>       // la lista de puntos del rectángulo.
+#include <algorithm>    // sort: ordenar los cruces del relleno.
 #include "Grilla.h"     // Necesito el lienzo para poder dibujar en él.
 #include "Bresenham.h"  // Necesito mi matemática de líneas y círculos.
 
 // Los tipos de figura que mi paint sabe hacer.
-enum TipoFigura { LINEA, CIRCULO, RECTANGULO, LAPIZ };
+enum TipoFigura { LINEA, CIRCULO, RECTANGULO, LAPIZ, TRIANGULO, CUADRADO, POLIGONO, ESTRELLA };
 
 // Una Figura es un paquete que guarda TODO lo necesario para dibujar algo.
 struct Figura {
@@ -18,9 +19,13 @@ struct Figura {
     float r, g, b;   // El color de la figura (rojo, verde, azul).
     std::vector<float> puntosX; // RECTANGULO: la X de cada una de sus 4 esquinas (en orden alrededor del borde).
     std::vector<float> puntosY; // RECTANGULO: la Y de cada esquina.
+    bool relleno = false; // ¿La figura está rellena o solo tiene borde?
+    // Estas figuras son polígonos: se guardan como una lista de vértices y cierran su borde.
+    bool esPoligono() { return tipo == RECTANGULO || tipo == TRIANGULO || tipo == CUADRADO || tipo == POLIGONO || tipo == ESTRELLA; }
 
     // La figura sabe dibujarse a sí misma usando mi Bresenham.
     void dibujar(Grilla& grilla) {
+        if (relleno) rellenar(grilla); // Si la figura está rellena, primero pinto el relleno y después el borde encima.
         // Bresenham trabaja con celdas ENTERAS, así que redondeo mis decimales justo al dibujar.
         int ix0 = (int)std::round(x0);
         int iy0 = (int)std::round(y0);
@@ -30,7 +35,7 @@ struct Figura {
             Bresenham::linea(ix0, iy0, ix1, iy1, grilla, r, g, b);
         } else if (tipo == CIRCULO) {
             Bresenham::circulo(ix0, iy0, (int)std::round(radio), grilla, r, g, b);
-        } else if (tipo == RECTANGULO) { // Un rectángulo son 4 líneas, una entre cada par de esquinas vecinas.
+                } else if (esPoligono()) { // Rectángulo, triángulo, cuadrado, polígono o estrella: una línea entre cada par de vértices vecinos.
             int n = (int)puntosX.size();
             for (int i = 0; i < n; ++i) {
                 int j = (i + 1) % n; // La esquina siguiente. El % hace que la última se una con la primera (cierra el borde).
@@ -45,6 +50,54 @@ struct Figura {
             for (int i = 0; i < n - 1; ++i) { // n - 1: la última NO se une con la primera.
                 Bresenham::linea((int)std::round(puntosX[i]),     (int)std::round(puntosY[i]),
                                  (int)std::round(puntosX[i + 1]), (int)std::round(puntosY[i + 1]), grilla, r, g, b);
+            }
+        }
+    }
+
+
+    // RELLENO por línea de barrido (scanline): recorro el lienzo fila por fila
+    // y en cada fila pinto el tramo que queda ENTRE los bordes de la figura.
+    void rellenar(Grilla& grilla) {
+        if (tipo == CIRCULO) {
+            int R  = (int)std::round(radio);
+            int cx = (int)std::round(x0);
+            int cy = (int)std::round(y0);
+            for (int dy = -R; dy <= R; ++dy) { // Cada fila, desde R filas abajo del centro hasta R filas arriba.
+                // Pitágoras: a distancia dy del centro, la mitad del ancho del círculo es sqrt(R*R - dy*dy).
+                int mitad = (int)std::round(std::sqrt((float)(R * R - dy * dy)));
+                for (int x = cx - mitad; x <= cx + mitad; ++x) {
+                    grilla.paintPixel(x, cy + dy, r, g, b);
+                }
+            }
+        } else if (esPoligono()) {
+            int n = (int)puntosX.size();
+            std::vector<int> vx(n), vy(n); // Los vértices redondeados (igual que hace el borde al dibujarse).
+            int minY = 0, maxY = 0;
+            for (int i = 0; i < n; ++i) {
+                vx[i] = (int)std::round(puntosX[i]);
+                vy[i] = (int)std::round(puntosY[i]);
+                if (i == 0 || vy[i] < minY) minY = vy[i];
+                if (i == 0 || vy[i] > maxY) maxY = vy[i];
+            }
+            for (int y = minY; y <= maxY; ++y) { // Una fila a la vez, de abajo hacia arriba.
+                std::vector<float> cruces; // Las X donde el borde de la figura cruza esta fila.
+                for (int i = 0; i < n; ++i) {
+                    int j = (i + 1) % n; // El borde va del vértice i al vértice j.
+                    if (vy[i] == vy[j]) continue; // Borde horizontal: no cruza ninguna fila, lo salto.
+                    int yMenor = vy[i] < vy[j] ? vy[i] : vy[j];
+                    int yMayor = vy[i] < vy[j] ? vy[j] : vy[i];
+                    if (y >= yMenor && y < yMayor) { // ¿Este borde pasa por esta fila? (el "<" evita contar dos veces un vértice)
+                        float t = (float)(y - vy[i]) / (float)(vy[j] - vy[i]); // Qué tan arriba del borde estoy (0 a 1).
+                        cruces.push_back(vx[i] + t * (vx[j] - vx[i]));         // La X exacta del cruce.
+                    }
+                }
+                std::sort(cruces.begin(), cruces.end()); // Ordeno los cruces de izquierda a derecha.
+                // Los cruces vienen en parejas: entro a la figura, salgo de la figura. Pinto entre cada pareja.
+                for (int k = 0; k + 1 < (int)cruces.size(); k += 2) {
+                    for (int x = (int)std::round(cruces[k]); x <= (int)std::round(cruces[k + 1]); ++x) {
+                        grilla.paintPixel(x, y, r, g, b);
+                    }
+                }
             }
         }
     }

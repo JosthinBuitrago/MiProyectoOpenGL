@@ -84,6 +84,9 @@ int main() {
 
     std::vector<float> trazoX, trazoY; // NUEVO: las celdas por donde va pasando el mouse mientras dibujo con el lápiz.
 
+    int lados = 5;                // Cuántos lados tiene el polígono (o puntas la estrella).
+    bool rellenarNuevas = false;  // ¿Las figuras nuevas nacen rellenas?
+
     // --- BUCLE PRINCIPAL (GAMELOOP) ---
     // Este ciclo da vueltas infinitas a 60 cuadros por segundo hasta que el usuario cierre la ventana.
     while (!glfwWindowShouldClose(window)) {
@@ -100,11 +103,16 @@ int main() {
         ImGui::Separator();
 
         ImGui::Text("Herramienta");
-        // RadioButton: botón redondo; devuelve true cuando lo clickean. Solo uno queda marcado.
-        if (ImGui::RadioButton("Linea", herramienta == LINEA)) herramienta = LINEA;
-        if (ImGui::RadioButton("Circulo", herramienta == CIRCULO)) herramienta = CIRCULO;
-        if (ImGui::RadioButton("Rectangulo", herramienta == RECTANGULO)) herramienta = RECTANGULO;
-        if (ImGui::RadioButton("Lapiz", herramienta == LAPIZ)) herramienta = LAPIZ;
+        // Combo: lista desplegable. Los nombres van en el MISMO orden que el enum TipoFigura de Figura.h.
+        const char* nombresHerramientas[] = { "Linea", "Circulo", "Rectangulo", "Lapiz", "Triangulo", "Cuadrado", "Poligono", "Estrella" };
+        int h = (int)herramienta; // Un enum es un número por dentro: LINEA=0, CIRCULO=1, RECTANGULO=2...
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::Combo("##herramienta", &h, nombresHerramientas, 8)) herramienta = (TipoFigura)h;
+        if (herramienta == POLIGONO || herramienta == ESTRELLA) { // Solo muestro este slider para esas dos herramientas.
+            ImGui::SetNextItemWidth(-1);
+            ImGui::SliderInt("##lados", &lados, 3, 12, herramienta == POLIGONO ? "Lados: %d" : "Puntas: %d");
+        }
+        ImGui::Checkbox("Rellenar al dibujar", &rellenarNuevas);
         ImGui::Separator();
         ImGui::Text("Color");
         ImGui::SetNextItemWidth(-1); // La barra de color ocupa todo el ancho del panel.
@@ -133,6 +141,10 @@ int main() {
             if (figuras[i].tipo == CIRCULO) nombre = "Circulo";
             else if (figuras[i].tipo == RECTANGULO) nombre = "Rectangulo";
             else if (figuras[i].tipo == LAPIZ) nombre = "Lapiz";
+            else if (figuras[i].tipo == TRIANGULO) nombre = "Triangulo";
+            else if (figuras[i].tipo == CUADRADO) nombre = "Cuadrado";
+            else if (figuras[i].tipo == POLIGONO) nombre = "Poligono";
+            else if (figuras[i].tipo == ESTRELLA) nombre = "Estrella";
             snprintf(etiqueta, sizeof(etiqueta), "%s %d", nombre, i + 1);
             // Selectable: un renglón clickeable. Devuelve true cuando lo clickean.
             if (ImGui::Selectable(etiqueta, seleccionada == i)) seleccionada = i;
@@ -162,7 +174,7 @@ int main() {
             } else if (sel.tipo == LINEA) {    // El punto medio de la propia línea.
                 pivoteX = (sel.x0 + sel.x1) / 2.0f;
                 pivoteY = (sel.y0 + sel.y1) / 2.0f;
-                } else if (sel.tipo == RECTANGULO || sel.tipo == LAPIZ) { // El centro: el promedio de todos sus puntos.
+                } else if (sel.esPoligono() || sel.tipo == LAPIZ) { // El centro: el promedio de todos sus puntos.
                 pivoteX = 0.0f;
                 pivoteY = 0.0f;
                 for (int i = 0; i < (int)sel.puntosX.size(); ++i) {
@@ -198,6 +210,10 @@ int main() {
             rgbACmyk(sel.r, sel.g, sel.b, cs, ms, ys, ks);
             ImGui::Text("C: %.0f%%  M: %.0f%%", cs * 100.0f, ms * 100.0f);
             ImGui::Text("Y: %.0f%%  K: %.0f%%", ys * 100.0f, ks * 100.0f);
+
+            if (sel.tipo != LINEA && sel.tipo != LAPIZ) { // La línea y el lápiz no encierran área, no se pueden rellenar.
+                ImGui::Checkbox("Rellenar esta figura", &sel.relleno);
+            }
 
             if (ImGui::Button("Borrar esta figura", ImVec2(-1, 0))) {
                 figuras.erase(figuras.begin() + seleccionada); // La saco de la lista.
@@ -263,7 +279,32 @@ int main() {
                 nueva.puntosX = trazoX; // La figura se queda con una copia del recorrido.
                 nueva.puntosY = trazoY;
             }
+            if (herramienta == TRIANGULO) { // Triángulo isósceles: base en la altura donde presioné, punta en la altura del mouse.
+                nueva.puntosX = { (float)inicioX, (float)celdaX, (inicioX + celdaX) / 2.0f };
+                nueva.puntosY = { (float)inicioY, (float)inicioY, (float)celdaY };
+            }
+            if (herramienta == CUADRADO) { // Cuadrado: el lado es la mayor de las dos distancias (en X o en Y).
+                int ax = dx < 0 ? -dx : dx;          // Distancia en X sin signo.
+                int ay = dy < 0 ? -dy : dy;          // Distancia en Y sin signo.
+                int lado = ax > ay ? ax : ay;        // El lado es la mayor de las dos.
+                int sx = dx < 0 ? -1 : 1;            // Hacia qué lado arrastré en X.
+                int sy = dy < 0 ? -1 : 1;            // Hacia qué lado arrastré en Y.
+                nueva.puntosX = { (float)inicioX, (float)(inicioX + sx * lado), (float)(inicioX + sx * lado), (float)inicioX };
+                nueva.puntosY = { (float)inicioY, (float)inicioY, (float)(inicioY + sy * lado), (float)(inicioY + sy * lado) };
+            }
+            if (herramienta == POLIGONO || herramienta == ESTRELLA) { // Polígono regular o estrella: el centro es donde presioné.
+                float R = std::sqrt((float)(dx * dx + dy * dy)); // El radio es la distancia del centro al mouse.
+                int total = (herramienta == ESTRELLA) ? lados * 2 : lados; // La estrella tiene el doble de vértices (puntas y huecos).
+                for (int i = 0; i < total; ++i) {
+                    float angulo = 3.14159265f / 2.0f + i * 2.0f * 3.14159265f / total; // Reparto los vértices en círculo; el primero apunta hacia arriba.
+                    float rad = R;
+                    if (herramienta == ESTRELLA && i % 2 == 1) rad = R * 0.4f; // En la estrella, los vértices impares van más cerca del centro.
+                    nueva.puntosX.push_back(inicioX + rad * std::cos(angulo));
+                    nueva.puntosY.push_back(inicioY + rad * std::sin(angulo));
+                }
+            }
             nueva.r = colorActual[0]; nueva.g = colorActual[1]; nueva.b = colorActual[2];
+            nueva.relleno = rellenarNuevas; // La figura nueva nace rellena o vacía según la casilla del panel.
         }
 
         // 3) ACABO DE SOLTAR el botón: la figura queda guardada en la lista.
@@ -282,7 +323,7 @@ int main() {
         // Marco con puntos blancos los extremos (o el centro) de la figura seleccionada.
         if (seleccionada >= 0 && seleccionada < (int)figuras.size()) {
             Figura& s = figuras[seleccionada];
-            if (s.tipo == RECTANGULO) { // El rectángulo marca sus 4 esquinas.
+            if (s.esPoligono()) { // Los polígonos marcan todos sus vértices.
                 for (int i = 0; i < (int)s.puntosX.size(); ++i) {
                     grilla.paintPixel((int)std::round(s.puntosX[i]), (int)std::round(s.puntosY[i]), 1.0f, 1.0f, 1.0f);
                 }
